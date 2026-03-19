@@ -30,6 +30,7 @@
 ### 依赖项
 ```bash
 pip install pandas openpyxl
+pip install h5py
 ```
 
 ### 外部工具
