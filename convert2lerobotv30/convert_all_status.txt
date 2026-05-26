@@ -1,0 +1,335 @@
+====================================================================================================
+任务处理状态日志
+更新时间: 2026-05-26 12:49:33
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+任务编号: 1/19
+任务ID: cbb7c7427b514ee5865ffeba6c5db075
+来源表单: 郑州平台
+Robot Type: 智元G1
+任务名称: 鼠标垫清洁（固定）
+处理后文本(英文): The gripper of the right arm of the robotic arm grabs the mouse on the mouse pad. The gripper of the right arm of the robotic arm places the mouse in the designated position on the desktop. The gripper of the right arm of the robotic arm grabs the cleaning cloth, and uses the cleaning cloth to wipe the mouse pad. The gripper of the right arm of the robotic arm returns the cleaning cloth to its original position
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:42:17
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 2/19
+任务ID: 88848659a6da4ce7abf14771aa6ccabc
+来源表单: 郑州平台
+Robot Type: 青龙ROS2
+任务名称: 插花
+处理后文本(英文): The right-handed robotic arm picks up flowers, while the right-handed robotic arm places flowers
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:42:25
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 3/19
+任务ID: dca3ed3aa6ba4b07ae11781b9262818a
+来源表单: 郑州平台
+Robot Type: 智元A2
+任务名称: 药品分拣
+处理后文本(英文): Grasp the medicine box with the right arm and place it on the right arm
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:42:34
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 4/19
+任务ID: 00f90b4ab0e547f39c5e0d1b1c4b59a8
+来源表单: 郑州平台
+Robot Type: 乐聚KUAVO
+任务名称: 汽车线束焊接
+处理后文本(英文): Grab the wire harness, place it into the operation compartment, grab the welded wire harness in the operation compartment, and put the wire harness back to its original position+reset
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:42:49
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 5/19
+任务ID: 66aa5e7443394a899aede207068fbfec
+来源表单: 郑州平台
+Robot Type: 傅利叶GR2
+任务名称: 擦桌子
+处理后文本(英文): Grab a towel to wipe the table and place it in the storage box
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:42:57
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 6/19
+任务ID: 23ff26e7f3494e0ba8d6f33452ad94ee
+来源表单: 郑州平台
+Robot Type: Dwheel
+任务名称: 商超货架盒装绿茶补货 （固定）
+处理后文本(英文): The right arm of the robotic arm grabs boxed green tea from the box, carries the boxed green tea to the boxed green tea storage area, places the boxed green tea in the boxed green tea storage area, and moves the machine to the box under the shelf. The right arm of the robotic arm grabs the boxed green tea from the box, carries the boxed green tea to the boxed green tea storage area, and places the boxed green tea in the boxed green tea storage area
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:43:43
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 7/19
+任务ID: f850372cd2b44bc297522657729d9dd2
+来源表单: 重点研发-上海
+Robot Type: 智元G1
+任务名称: 海信_电源组件安装_第5格
+处理后文本(英文): Take the power module from the 5th compartment on the left of the material box and place it on the back panel
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:44:41
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 8/19
+任务ID: 525b413cd8924fa58c6fb8de2d0332f3
+来源表单: 模型内部需求-上海
+Robot Type: 智元A2
+任务名称: 十字体圆柱积木分类_桌面背景泛化_小菊花
+处理后文本(英文): The right arm of the robotic arm grabs the cylindrical block; the right arm of the robotic arm places the cylindrical block into the right box; the right arm of the robotic arm grabs the cylindrical block; the right arm of the robotic arm places the cylindrical block into the right box; the left arm of the robotic arm grabs the cross-shaped block; the left arm of the robotic arm places the cross-shaped block into the left box; the left arm of the robotic arm grabs the cross-shaped block; the left arm of the robotic arm places the cross-shaped block into the left box;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:45:12
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 9/19
+任务ID: fa8256245c4d4b1d8e534da29fcb6975
+来源表单: 模型内部需求-上海
+Robot Type: 方舟无限arx-acone
+任务名称: 叠衣服_人在环_1
+处理后文本(英文): The dual grippers of the robotic arm fold the scattered clothes multiple times until they grasp both corners. ; The dual grippers of the robotic arm grasp both corners and lift the clothes. ; The dual grippers of the robotic arm spread the clothes out on the table. ; The left gripper of the robotic arm straightens one corner. ; The right gripper of the robotic arm straightens the other corner. ; The dual grippers of the robotic arm fold the closer side. ; The dual grippers of the robotic arm pull the clothes closer. ; The dual grippers of the robotic arm fold the other side. ; The right gripper of the robotic arm presses down on one side of the clothes. ; The left gripper of the robotic arm folds the clothes left and right. ; The right gripper of the robotic arm pushes the folded clothes to the side. ;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:46:07
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 10/19
+任务ID: c002540b68b54b11824e5d2f439c58b9
+来源表单: 模型内部需求-上海
+Robot Type: 傅利叶GR2
+任务名称: 预-杯碟放置_桌面背景泛化_绿色
+处理后文本(英文): The right arm of the robotic arm grabs the cup; the right arm of the robotic arm places the cup into the saucer;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:46:16
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 11/19
+任务ID: 3602d39d919a42f58c16b821df67aaa2
+来源表单: 模型内部需求-上海
+Robot Type: 智元G1
+任务名称: 固定抓取
+处理后文本(英文): The initial robot is positioned in front of the table, with the gripper of its right mechanical arm grasping the doll;; The robot's right arm transfers the doll to the left arm; The gripper of the left mechanical arm places the doll into the red storage box on the table;;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:46:37
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 12/19
+任务ID: 8c55fc61464d4261baff23ff9e426e18
+来源表单: 模型内部需求-上海
+Robot Type: 星尘智能S1
+任务名称: 预-半圆柱扇形柱积木分类_桌面背景泛化_柠檬桌布
+处理后文本(英文): The right arm of the robotic arm grabs the sector-shaped column block; the right arm of the robotic arm places the sector-shaped column block into the right box; the right arm of the robotic arm grabs the sector-shaped column block; the right arm of the robotic arm places the sector-shaped column block into the right box; the left arm of the robotic arm grabs the semi-cylindrical block; the left arm of the robotic arm places the semi-cylindrical block into the left box; the left arm of the robotic arm grabs the semi-cylindrical block; the left arm of the robotic arm places the semi-cylindrical block into the left box.
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:46:48
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 13/19
+任务ID: 5df79740a10d4784b04975f9af3c558c
+来源表单: 模型内部需求-上海
+Robot Type: UR5e
+任务名称: 语义测试
+处理后文本(英文): Left arm/Right arm grabs the battery; Left arm/Right arm places the battery into the bowl;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:47:04
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 14/19
+任务ID: 7432bbb1213b4cc6afb768311cdd08a5
+来源表单: 模型内部需求-上海
+Robot Type: 天机
+任务名称: 预-杨桃芒果分类_桌面背景泛化_橙色
+处理后文本(英文): The right arm of the robotic arm grabs the mango; the right arm of the robotic arm places the mango into the right plate; the right arm of the robotic arm grabs the mango; the right arm of the robotic arm places the mango into the right plate; the left arm of the robotic arm grabs the carambola; the left arm of the robotic arm places the carambola into the left plate; the left arm of the robotic arm grabs the carambola; the left arm of the robotic arm places the carambola into the left plate.
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:47:48
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 15/19
+任务ID: 3875578cb32c48dfb390648016981ecb
+来源表单: 模型内部需求-上海
+Robot Type: Dwheel
+任务名称: 预-杨桃芒果分类_桌面背景泛化_黄色
+处理后文本(英文): The right arm of the robotic arm grabs the mango; the right arm of the robotic arm places the mango into the right box; the right arm of the robotic arm grabs the mango; the right arm of the robotic arm places the mango into the right box; the left arm of the robotic arm grabs the star fruit; the left arm of the robotic arm places the star fruit into the left box; the left arm of the robotic arm grabs the star fruit; the left arm of the robotic arm places the star fruit into the left box;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:48:17
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 16/19
+任务ID: 4a6710a005f242e8b683f5b3885493a4
+来源表单: 模型内部需求-上海
+Robot Type: 松灵Aloha
+任务名称: 后-颜色分类蓝色-100
+处理后文本(英文): The gripper of the right arm of the robotic arm grabs the blue object on the table; the gripper of the right arm of the robotic arm puts the grabbed object into the basket; the gripper of the right arm of the robotic arm repeats the above process until there are no blue objects on the table.
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:48:35
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 17/19
+任务ID: f42f3052e28b4e1b85a2a15bdb963e4f
+来源表单: 模型内部需求-上海
+Robot Type: 乐聚KUAVO
+任务名称: 预-对抗采集-用字母积木拼出桌面物体的英文单词_杯子
+处理后文本(英文): Grab the letter block C; place the letter block C in the target area; grab the letter block U; place the letter block U in the target area; grab the letter block P; place the letter block P in the target area;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:48:54
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 18/19
+任务ID: 840f3367c3864c0b839b805722c79b2e
+来源表单: 模型内部需求-上海
+Robot Type: 星海图R1
+任务名称: 预-叠放杯子
+处理后文本(英文): Grab the cup on the left side of the desktop; place it in the target area in the center of the desktop; grab the cup on the right side of the desktop; stack it on top of the cup in the center of the desktop.
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:49:08
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+任务编号: 19/19
+任务ID: 214a3a95d17a42d9ae524c0da2ed543c
+来源表单: 模型内部需求-上海
+Robot Type: Franka FR3
+任务名称: 物品整理
+处理后文本(英文): Pick up the cup with the left arm; place the cup on the coaster; pick up the straw from the cup with the right arm; place the straw on the table; pick up the spoon with the right arm; place the spoon in the cup;
+开始时间: 2026-05-26 12:41:26
+结束时间: 2026-05-26 12:49:33
+
+【下载状态】: success
+【子文件夹数量】: 2
+  处理动作: 数量合规(共2个)，无需处理
+【转换状态】: success
+【删除状态】: success
+----------------------------------------------------------------------------------------------------
+
+====================================================================================================
+统计信息:
+  总任务数: 19
+  下载成功: 19/19
+  转换成功: 19/19
+  删除成功: 19/19
+====================================================================================================
