@@ -750,6 +750,7 @@ if __name__ == "__main__":
         "智元A2": scripts_base_path + "/ZhiYuanA2_align2lerobotv30.py",
         "青龙ROS1": scripts_base_path + "/QinLongROS1_align2lerobotv30.py",
         "青龙ROS2": scripts_base_path + "/QinLongROS2_align2lerobotv30.py",
+        "灵龙-h": scripts_base_path + "linglong_h_align2lerobotv30.py",
     }
 
     # 智元G1的转换脚本，2个地区，当作2个机型
