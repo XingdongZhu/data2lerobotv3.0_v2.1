@@ -8,16 +8,18 @@
 适用于已对齐的 h5 文件 (*_align.h5)。
 
 数据结构 (基于 metadata.json + 实际 h5 dataset shape):
-    State / Action: 14 维
-        - arm:       12 维 (left_arm 6 + right_arm 6), 单位 rad
-                     [l-j1..l-j6, r-j1..r-j6]
-                     (motor_names 中下划线化: l_j1..r_j6)
-        - effector:   2 维 (left_gripper + right_gripper), 单位 m，范围约 [0, 0.07]
-                     【本脚本保留原始 m 物理量，不做归一化】
+    State / Action: 20 维
+        - arm:            12 维 (left_arm 6 + right_arm 6), 单位 rad
+                          [l-j1..l-j6, r-j1..r-j6]
+                          (motor_names 中下划线化: l_j1..r_j6)
+        - effector:        2 维 (left_gripper + right_gripper), 单位 m，范围约 [0, 0.07]
+                          【本脚本保留原始 m 物理量，不做归一化】
+        - robot_angular:   3 维，来自 joints/{state,action}/robot/angular
+        - robot_vel:       3 维，来自 joints/{state,action}/robot/velocity
+                          与 DreamZero MODALITY/cobotmagic 对齐（索引 14-20）
 
     备注:
-        - h5 中 joints/{state,action}/robot/{angular,velocity} 均为 (N, 3) 全 0
-          (底盘静止)，与 1D state vector 不兼容且无信息，舍弃。
+        - 部分 episode 中 robot angular/velocity 可能全 0（底盘静止），仍保留维度以对齐模型。
 
     相机:
         - head:       原 720x1280 RGB, resize 到 640x480
@@ -89,6 +91,8 @@ ALOHA_CONFIG = {
     "robot_type": "cobotmagic",
     "arm_dim": 12,        # 左臂6 + 右臂6
     "effector_dim": 2,    # left_gripper + right_gripper
+    "robot_angular_dim": 3,
+    "robot_vel_dim": 3,
     "cameras": ["head", "hand_left", "hand_right"],
     "target_image_size": (640, 480),
 }
@@ -99,9 +103,17 @@ MOTOR_NAMES = [
     "r_j1", "r_j2", "r_j3", "r_j4", "r_j5", "r_j6",
     # effector 2
     "left_gripper", "right_gripper",
+    # robot base 6 (angular3 + velocity3)
+    "robot_angular_0", "robot_angular_1", "robot_angular_2",
+    "robot_vel_0", "robot_vel_1", "robot_vel_2",
 ]
 
-STATE_DIM = ALOHA_CONFIG["arm_dim"] + ALOHA_CONFIG["effector_dim"]
+STATE_DIM = (
+    ALOHA_CONFIG["arm_dim"]
+    + ALOHA_CONFIG["effector_dim"]
+    + ALOHA_CONFIG["robot_angular_dim"]
+    + ALOHA_CONFIG["robot_vel_dim"]
+)
 ACTION_DIM = STATE_DIM
 assert len(MOTOR_NAMES) == STATE_DIM, (
     f"MOTOR_NAMES ({len(MOTOR_NAMES)}) != STATE_DIM ({STATE_DIM})"
@@ -232,6 +244,28 @@ def _read_position(f: h5py.File, group: str, expect_dim: int, num_frames: int) -
     return np.zeros((num_frames, expect_dim), dtype=np.float32)
 
 
+def _read_robot_field(
+    f: h5py.File, group: str, field: str, expect_dim: int, num_frames: int
+) -> np.ndarray:
+    """读取 robot 子组下的 angular / velocity 等字段（非 position）。"""
+    key = f"{group}/{field}"
+    if key in f:
+        arr = f[key][:]
+        if arr.ndim != 2 or arr.shape[1] != expect_dim:
+            logger.warning(
+                f"{key} shape={arr.shape} 与期望 (N, {expect_dim}) 不一致，截断/补零"
+            )
+            arr = arr.reshape(arr.shape[0], -1)
+            if arr.shape[1] > expect_dim:
+                arr = arr[:, :expect_dim]
+            elif arr.shape[1] < expect_dim:
+                pad = np.zeros((arr.shape[0], expect_dim - arr.shape[1]), dtype=arr.dtype)
+                arr = np.concatenate([arr, pad], axis=1)
+        return arr.astype(np.float32)
+    logger.warning(f"{key} 不存在，使用零填充 (N={num_frames}, dim={expect_dim})")
+    return np.zeros((num_frames, expect_dim), dtype=np.float32)
+
+
 def load_aloha_h5(h5_path: Path) -> Dict[str, Any]:
     """
     从松灵 Aloha COBOTMAGICV2.0 H5 文件加载数据
@@ -239,8 +273,8 @@ def load_aloha_h5(h5_path: Path) -> Dict[str, Any]:
     Returns:
         {
             'frames': int,
-            'state':  np.ndarray (N, 14) = arm12 + effector2
-            'action': np.ndarray (N, 14)
+            'state':  np.ndarray (N, 20) = arm12 + effector2 + robot_angular3 + robot_vel3
+            'action': np.ndarray (N, 20)
             'images': {camera_id: List[np.ndarray]},
             'image_shapes': {camera_id: (H, W, C)},
             'task': str,
@@ -271,12 +305,28 @@ def load_aloha_h5(h5_path: Path) -> Dict[str, Any]:
         s_arm      = _read_position(f, 'joints/state/arm',      ALOHA_CONFIG['arm_dim'],      num_frames)
         s_effector = _read_position(f, 'joints/state/effector', ALOHA_CONFIG['effector_dim'], num_frames)
         s_effector = np.clip(s_effector, 0.0, 0.08)
-        data['state'] = np.concatenate([s_arm, s_effector], axis=1).astype(np.float32)
+        s_robot_angular = _read_robot_field(
+            f, 'joints/state/robot', 'angular', ALOHA_CONFIG['robot_angular_dim'], num_frames
+        )
+        s_robot_vel = _read_robot_field(
+            f, 'joints/state/robot', 'velocity', ALOHA_CONFIG['robot_vel_dim'], num_frames
+        )
+        data['state'] = np.concatenate(
+            [s_arm, s_effector, s_robot_angular, s_robot_vel], axis=1
+        ).astype(np.float32)
 
         a_arm      = _read_position(f, 'joints/action/arm',      ALOHA_CONFIG['arm_dim'],      num_frames)
         a_effector = _read_position(f, 'joints/action/effector', ALOHA_CONFIG['effector_dim'], num_frames)
         a_effector = np.clip(a_effector, 0.0, 0.08)
-        data['action'] = np.concatenate([a_arm, a_effector], axis=1).astype(np.float32)
+        a_robot_angular = _read_robot_field(
+            f, 'joints/action/robot', 'angular', ALOHA_CONFIG['robot_angular_dim'], num_frames
+        )
+        a_robot_vel = _read_robot_field(
+            f, 'joints/action/robot', 'velocity', ALOHA_CONFIG['robot_vel_dim'], num_frames
+        )
+        data['action'] = np.concatenate(
+            [a_arm, a_effector, a_robot_angular, a_robot_vel], axis=1
+        ).astype(np.float32)
 
         # ===== 相机图像 =====
         images: Dict[str, List[np.ndarray]] = {}
@@ -578,7 +628,7 @@ def main():
         print(f"  - {path.name}")
 
     print(f"\nRobot: {ALOHA_CONFIG['robot_type']}")
-    print(f"State/Action dim: {STATE_DIM} (arm12 + effector2)")
+    print(f"State/Action dim: {STATE_DIM} (arm12 + effector2 + robot_angular3 + robot_vel3)")
     print(f"Cameras: {ALOHA_CONFIG['cameras']}")
     print(f"Workers: {args.workers}, PyAV: {USE_PYAV}")
     print(f"Task: {args.task}")

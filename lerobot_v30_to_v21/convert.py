@@ -34,8 +34,10 @@ import logging
 import sys
 import time
 import os
+from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Callable
 
 # 禁用进度条和详细日志
 os.environ['TQDM_DISABLE'] = '1'
@@ -52,6 +54,36 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+class ConsoleLog:
+    """同时输出到终端并写入日志文件。"""
+
+    def __init__(self, log_file_path: str | None = None):
+        self.log_path = Path(log_file_path).resolve() if log_file_path else None
+        if self.log_path:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.log_path, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write("LeRobot v3.0 -> v2.1 转换日志\n")
+                f.write(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 80 + "\n\n")
+
+    def print(self, *args, sep: str = " ", end: str = "\n", **kwargs) -> None:
+        print(*args, sep=sep, end=end, **kwargs)
+        if self.log_path:
+            message = sep.join(str(a) for a in args) + end
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(message)
+
+    def finalize(self) -> None:
+        if self.log_path:
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write("\n" + "=" * 80 + "\n")
+                f.write(
+                    f"结束时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
+                f.write("=" * 80 + "\n")
 
 
 def load_dataset_info(path: Path) -> dict | None:
@@ -118,7 +150,13 @@ def is_dataset_converted(dataset_id: str, output_dir: Path, robot_type: str = No
     return False
 
 
-def convert_single(input_path: Path, output_dir: Path, repo_id_prefix: str, group_by_robot: bool = True) -> bool:
+def convert_single(
+    input_path: Path,
+    output_dir: Path,
+    repo_id_prefix: str,
+    group_by_robot: bool = True,
+    log_print: Callable[..., None] = print,
+) -> bool:
     """Convert a single dataset. Returns True on success."""
     dataset_id = input_path.name
     robot_type = get_robot_type(input_path) if group_by_robot else None
@@ -139,11 +177,11 @@ def convert_single(input_path: Path, output_dir: Path, repo_id_prefix: str, grou
             output_root=str(output_path),
         )
         elapsed = time.time() - start_time
-        print(f"✓ [{dataset_id}] 转换完成 ({elapsed:.1f}秒)")
+        log_print(f"✓ [{dataset_id}] 转换完成 ({elapsed:.1f}秒)")
         return True
     except Exception as e:
         elapsed = time.time() - start_time
-        print(f"✗ [{dataset_id}] 转换失败 ({elapsed:.1f}秒): {e}")
+        log_print(f"✗ [{dataset_id}] 转换失败 ({elapsed:.1f}秒): {e}")
         logger.exception("Failed [%s] after %.1f seconds", dataset_id, elapsed)
         return False
 
@@ -267,6 +305,12 @@ examples:
         action="store_true",
         help="显示详细的转换进度和日志信息",
     )
+    parser.add_argument(
+        "--log-file-path",
+        type=str,
+        default=None,
+        help="将终端输出同时写入该日志文件",
+    )
     args = parser.parse_args()
     
     # 如果用户指定 verbose，则重新配置日志级别
@@ -284,107 +328,149 @@ examples:
     group_by_robot = not args.no_group_by_robot
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.batch:
-        # Batch mode: scan for datasets
-        all_datasets = discover_datasets(input_path)
-        if not all_datasets:
-            print(f"❌ 未找到 v3.0 数据集: {input_path}")
-            sys.exit(1)
+    out = ConsoleLog(args.log_file_path)
+    if args.log_file_path:
+        out.print(f"输入目录: {input_path}")
+        out.print(f"输出目录: {output_dir}")
+        out.print(f"批量模式: {args.batch}")
+        out.print(f"并行 workers: {args.workers}")
+        out.print(f"按 robot_type 分组: {group_by_robot}")
+        out.print()
 
-        print(f"📦 找到 {len(all_datasets)} 个 v3.0 数据集")
-        
-        # 过滤掉已转换的数据集（Resume 功能）
-        datasets = []
-        skipped = []
-        for ds_path in all_datasets:
-            dataset_id = ds_path.name
-            robot_type = get_robot_type(ds_path) if group_by_robot else None
-            
-            if is_dataset_converted(dataset_id, output_dir, robot_type):
-                skipped.append(dataset_id)
-            else:
-                datasets.append(ds_path)
-        
-        if skipped:
-            print(f"⏭  跳过 {len(skipped)} 个已转换的数据集")
-        
-        if not datasets:
-            print(f"✅ 所有数据集已转换完成！")
-            sys.exit(0)
-        
-        print(f"📋 待转换: {len(datasets)} 个数据集")
-        print(f"⚙️  使用 {args.workers} 个并行工作进程")
-        print(f"开始转换...\n")
-        
-        # 构建任务列表
-        tasks = []
-        for i, ds_path in enumerate(datasets):
-            tasks.append((
+    try:
+        if args.batch:
+            _run_batch(input_path, output_dir, args, group_by_robot, out)
+        else:
+            _run_single(input_path, output_dir, args, group_by_robot, out)
+    finally:
+        if args.log_file_path:
+            out.print(f"\n详细日志已保存到: {out.log_path}")
+        out.finalize()
+
+
+def _run_single(
+    input_path: Path,
+    output_dir: Path,
+    args: argparse.Namespace,
+    group_by_robot: bool,
+    out: ConsoleLog,
+) -> None:
+    if not is_v30_dataset(input_path):
+        out.print(f"❌ 不是有效的 v3.0 数据集: {input_path}")
+        sys.exit(1)
+
+    out.print(f"转换单个数据集: {input_path.name}")
+    if not convert_single(
+        input_path,
+        output_dir,
+        args.repo_id_prefix,
+        group_by_robot,
+        log_print=out.print,
+    ):
+        sys.exit(1)
+    out.print("\n✅ 所有转换完成！")
+
+
+def _run_batch(
+    input_path: Path,
+    output_dir: Path,
+    args: argparse.Namespace,
+    group_by_robot: bool,
+    out: ConsoleLog,
+) -> None:
+    all_datasets = discover_datasets(input_path)
+    if not all_datasets:
+        out.print(f"❌ 未找到 v3.0 数据集: {input_path}")
+        sys.exit(1)
+
+    out.print(f"📦 找到 {len(all_datasets)} 个 v3.0 数据集")
+
+    datasets = []
+    skipped = []
+    for ds_path in all_datasets:
+        dataset_id = ds_path.name
+        robot_type = get_robot_type(ds_path) if group_by_robot else None
+
+        if is_dataset_converted(dataset_id, output_dir, robot_type):
+            skipped.append(dataset_id)
+        else:
+            datasets.append(ds_path)
+
+    if skipped:
+        out.print(f"⏭  跳过 {len(skipped)} 个已转换的数据集")
+
+    if not datasets:
+        out.print("✅ 所有数据集已转换完成！")
+        sys.exit(0)
+
+    out.print(f"📋 待转换: {len(datasets)} 个数据集")
+    out.print(f"⚙️  使用 {args.workers} 个并行工作进程")
+    out.print("开始转换...\n")
+
+    tasks = []
+    for i, ds_path in enumerate(datasets):
+        tasks.append(
+            (
                 ds_path,
                 output_dir,
                 args.repo_id_prefix,
                 group_by_robot,
                 i + 1,
-                len(datasets)
-            ))
-        
-        # 并行处理
-        succeeded, failed = 0, 0
-        failed_datasets = []
-        start_time = time.time()
-        
-        with ProcessPoolExecutor(max_workers=args.workers) as executor:
-            # 提交所有任务
-            futures = {executor.submit(convert_single_wrapper, task): task for task in tasks}
-            
-            # 收集结果
-            completed = 0
-            for future in as_completed(futures):
-                result = future.result()
-                completed += 1
-                
-                if result['success']:
-                    succeeded += 1
-                    print(f"✓ [{completed}/{len(datasets)}] {result['dataset_id']} - 完成 ({result['elapsed']:.1f}秒)")
-                else:
-                    failed += 1
-                    failed_datasets.append((result['dataset_id'], result['error']))
-                    print(f"✗ [{completed}/{len(datasets)}] {result['dataset_id']} - 失败 ({result['elapsed']:.1f}秒)")
-        
-        total_elapsed = time.time() - start_time
-        
-        print("\n" + "=" * 80)
-        print(f"批量转换完成！")
-        print(f"  总数据集: {len(all_datasets)}")
-        print(f"  已跳过: {len(skipped)}")
-        print(f"  本次转换: {len(datasets)}")
-        print(f"  成功: {succeeded}")
-        print(f"  失败: {failed}")
-        print(f"  总耗时: {total_elapsed:.1f} 秒 ({total_elapsed/60:.1f} 分钟)")
-        if succeeded > 0:
-            print(f"  平均耗时: {total_elapsed/succeeded:.1f} 秒/数据集")
-        print("=" * 80)
-        
-        if failed_datasets:
-            print("\n失败的数据集:")
-            for dataset_id, error in failed_datasets[:10]:
-                print(f"  - {dataset_id}: {error[:100]}")
-            if len(failed_datasets) > 10:
-                print(f"  ... 还有 {len(failed_datasets) - 10} 个失败")
-        
-        if failed > 0:
-            sys.exit(1)
-    else:
-        # Single mode
-        if not is_v30_dataset(input_path):
-            print(f"❌ 不是有效的 v3.0 数据集: {input_path}")
-            sys.exit(1)
+                len(datasets),
+            )
+        )
 
-        print(f"转换单个数据集: {input_path.name}")
-        if not convert_single(input_path, output_dir, args.repo_id_prefix, group_by_robot):
-            sys.exit(1)
+    succeeded, failed = 0, 0
+    failed_datasets = []
+    start_time = time.time()
 
-    print("\n✅ 所有转换完成！")
+    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        futures = {executor.submit(convert_single_wrapper, task): task for task in tasks}
+
+        completed = 0
+        for future in as_completed(futures):
+            result = future.result()
+            completed += 1
+
+            if result["success"]:
+                succeeded += 1
+                out.print(
+                    f"✓ [{completed}/{len(datasets)}] {result['dataset_id']} - "
+                    f"完成 ({result['elapsed']:.1f}秒)"
+                )
+            else:
+                failed += 1
+                failed_datasets.append((result["dataset_id"], result["error"]))
+                out.print(
+                    f"✗ [{completed}/{len(datasets)}] {result['dataset_id']} - "
+                    f"失败 ({result['elapsed']:.1f}秒)"
+                )
+
+    total_elapsed = time.time() - start_time
+
+    out.print("\n" + "=" * 80)
+    out.print("批量转换完成！")
+    out.print(f"  总数据集: {len(all_datasets)}")
+    out.print(f"  已跳过: {len(skipped)}")
+    out.print(f"  本次转换: {len(datasets)}")
+    out.print(f"  成功: {succeeded}")
+    out.print(f"  失败: {failed}")
+    out.print(f"  总耗时: {total_elapsed:.1f} 秒 ({total_elapsed/60:.1f} 分钟)")
+    if succeeded > 0:
+        out.print(f"  平均耗时: {total_elapsed/succeeded:.1f} 秒/数据集")
+    out.print("=" * 80)
+
+    if failed_datasets:
+        out.print("\n失败的数据集:")
+        for dataset_id, error in failed_datasets[:10]:
+            out.print(f"  - {dataset_id}: {error[:100]}")
+        if len(failed_datasets) > 10:
+            out.print(f"  ... 还有 {len(failed_datasets) - 10} 个失败")
+
+    out.print("\n✅ 所有转换完成！")
+
+    if failed > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

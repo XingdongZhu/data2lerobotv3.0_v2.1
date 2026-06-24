@@ -1,16 +1,16 @@
 task_ids=(
-            "b6104a919ef14249966311b1ff8cd5a5"
+            "7c4708937bf3442faf409540849d8d0d"
         )
 # 每个 task 最多下载多少个子文件夹
-max_subfolders=2
+max_subfolders=9999
 
 # 上海的obs地址
 obs_base="huawei-cloud:openloong-apps-prod-private/data-collector-svc/align"
-conf="/root/.config/rclone/rclone_shanghai.conf"
+conf="/workspace2/rclone_shanghai.conf"
 # 郑州的obs地址
 # obs_base='huawei-cloud:openloong-zhengzhou-apps-private/data-collector-svc/align'
 # conf="/root/.config/rclone/rclone_zhengzhou.conf"
-local="/mnt/fastdisk/align"
+local="/workspace2/datasets/align"
 
 for i in "${!task_ids[@]}"; do
   tid="${task_ids[$i]}"

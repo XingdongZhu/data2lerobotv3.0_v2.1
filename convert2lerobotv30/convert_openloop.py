@@ -1,6 +1,3 @@
-# rclone copy huawei-cloud:openloong-apps-prod-private/data-collector-svc/align/7d4237d11d9f4d8494e2b361ed68c8e1 
-# /mnt/sdc/align/7d4237d11d9f4d8494e2b361ed68c8e1 --transfers=16 -P
-
 import os
 import sys
 import signal
@@ -67,6 +64,10 @@ class TaskStatusLogger:
                         current_task_id = line.split(':')[1].strip()
                     elif line.startswith('来源表单:'):
                         task_info['sheet_name'] = line.split(':', 1)[1].strip()
+                    elif line.startswith('数据来源:'):
+                        task_info['region'] = line.split(':', 1)[1].strip()
+                    elif line.startswith('转换脚本:'):
+                        task_info['convert_script'] = line.split(':', 1)[1].strip()
                     elif line.startswith('Robot Type:'):
                         task_info['robot_type'] = line.split(':', 1)[1].strip()
                     elif line.startswith('任务名称:'):
@@ -106,6 +107,8 @@ class TaskStatusLogger:
                     task_info.setdefault('delete_error', None)
                     task_info.setdefault('end_time', None)
                     task_info.setdefault('sheet_name', '')
+                    task_info.setdefault('region', '')
+                    task_info.setdefault('convert_script', '')
                     task_info.setdefault('robot_type', '')
                     
                     self.tasks_status[current_task_id] = task_info
@@ -124,7 +127,18 @@ class TaskStatusLogger:
             print(f"⚠ 加载日志文件失败: {e}")
             print("  将以新日志模式启动")
     
-    def init_task(self, task_id, task_number, total_tasks, task_name, processed_text_en, sheet_name, robot_type):
+    def init_task(
+        self,
+        task_id,
+        task_number,
+        total_tasks,
+        task_name,
+        processed_text_en,
+        sheet_name,
+        robot_type,
+        region,
+        convert_script,
+    ):
         """初始化任务状态（如果任务已存在则不覆盖）"""
         with self.lock:
             # 如果任务已存在（resume模式），则不覆盖
@@ -133,6 +147,8 @@ class TaskStatusLogger:
                     'task_number': task_number,
                     'total_tasks': total_tasks,
                     'sheet_name': sheet_name,
+                    'region': region,
+                    'convert_script': convert_script,
                     'robot_type': robot_type,
                     'task_name': task_name,
                     'processed_text_en': processed_text_en,
@@ -150,6 +166,8 @@ class TaskStatusLogger:
                 self._write_to_file()
             else:
                 self.tasks_status[task_id]['sheet_name'] = sheet_name
+                self.tasks_status[task_id]['region'] = region
+                self.tasks_status[task_id]['convert_script'] = convert_script
                 self.tasks_status[task_id]['robot_type'] = robot_type
                 self._write_to_file()
     
@@ -245,7 +263,9 @@ class TaskStatusLogger:
                 f.write(f"任务编号: {status['task_number']}/{status['total_tasks']}\n")
                 f.write(f"任务ID: {task_id}\n")
                 f.write(f"来源表单: {status.get('sheet_name', '')}\n")
+                f.write(f"数据来源: {status.get('region', '')}\n")
                 f.write(f"Robot Type: {status.get('robot_type', '')}\n")
+                f.write(f"转换脚本: {status.get('convert_script', '')}\n")
                 f.write(f"任务名称: {status['task_name']}\n")
                 f.write(f"处理后文本(英文): {status['processed_text_en']}\n")
                 f.write(f"开始时间: {status['start_time']}\n")
@@ -299,6 +319,42 @@ def signal_handler(sig, frame):
     print("收到中断信号 (Ctrl+C)，正在终止程序...")
     print("=" * 80)
     sys.exit(0)
+
+
+def build_align2lerobot_cmd(
+    convert_script: str,
+    input_path: str | Path,
+    output_path: str | Path,
+    task_text: str,
+    repo_id: str | None = None,
+    fps: int = 30,
+    workers: int = 8,
+    vcodec: str = "libsvtav1",
+    crf: int = 30,
+) -> str:
+    """组装 align2lerobotv30 系列脚本的命令行（与 lejukuafu 等脚本参数一致）。"""
+    parts = [
+        "SVT_LOG=1",
+        "python3",
+        shlex.quote(str(convert_script)),
+        "--input",
+        shlex.quote(str(input_path)),
+        "--output",
+        shlex.quote(str(output_path)),
+        "--task",
+        shlex.quote(task_text),
+        "--fps",
+        str(fps),
+        "--workers",
+        str(workers),
+        "--vcodec",
+        shlex.quote(vcodec),
+        "--crf",
+        str(crf),
+    ]
+    if repo_id is not None and str(repo_id).strip():
+        parts.extend(["--repo_id", shlex.quote(str(repo_id).strip())])
+    return " ".join(parts)
 
 
 def run_command(cmd, description="执行命令"):
@@ -582,19 +638,18 @@ def check_and_limit_subfolder_count(task_path, max_count=300, logger=None, task_
         return False, 0, error_msg
 
 
-def get_data(excel_path, sheet_name):
+def get_data(excel_path, sheet_name="数据列表"):
     """
-    读取excel表格的指定表单，解析数据信息
-    
-    表格列结构:
-        任务ID    任务名称    设备类型    设备序列号   处理后文本(中文)   处理后文本(英文)   总时长(小时)
-    
+    读取 Excel「数据列表」表单。
+
+    列: 数据来源, 任务ID, 设备名称, 步骤(英文) 等；「数据来源」用于区分上海 / 郑州。
+
     Args:
-        excel_path: Excel文件路径
-        sheet_name: 表单名称（如"上海"）
-    
+        excel_path: Excel 文件路径
+        sheet_name: 表单名称，默认「数据列表」
+
     Returns:
-        list[dict]: 每行数据的字典列表，键名为表头
+        list[dict]: 每行数据的字典列表
     """
     try:
         # 读取Excel文件指定的sheet
@@ -613,6 +668,7 @@ def get_data(excel_path, sheet_name):
         data_list = []
         for idx, row in df.iterrows():
             record = {
+                '数据来源': row.get('数据来源', ''),
                 '任务ID': row.get('任务ID', ''),
                 '任务名称': row.get('任务名称', ''),
                 '设备类型': row.get('设备名称', ''),
@@ -667,6 +723,74 @@ if __name__ == "__main__":
         metavar="N",
         help="本批结束任务序号（含）；默认处理到最后一个任务",
     )
+    parser.add_argument(
+        "--excel-path",
+        type=str,
+        default="/dreamzero_openloop_pipeline/dreamzero_开环评测.xlsx",
+        help="任务清单 Excel 路径",
+    )
+    parser.add_argument(
+        "--align-path",
+        type=str,
+        default="/workspace2/eval_results/align",
+        help="本地下载 align 数据根目录",
+    )
+    parser.add_argument(
+        "--lerobot-v30-path",
+        type=str,
+        default="/workspace2/eval_results/lerobotv30",
+        help="LeRobot v3.0 输出根目录",
+    )
+    parser.add_argument(
+        "--scripts-base-path",
+        type=str,
+        default="/dreamzero_openloop_pipeline/data2lerobotv3.0_v2.1/convert2lerobotv30",
+        help="各机型转换脚本所在目录",
+    )
+    parser.add_argument(
+        "--max-count",
+        type=int,
+        default=2,
+        metavar="N",
+        help="每个 taskID 从桶上最多下载的 episode 数量",
+    )
+    parser.add_argument(
+        "--log-file-path",
+        type=str,
+        default="/workspace2/eval_results/convert_lerobotV30_status.txt",
+        help="任务状态日志文件路径",
+    )
+    parser.add_argument(
+        "--repo-id",
+        type=str,
+        default=None,
+        help="传给转换脚本的 HuggingFace repo_id（默认不传，使用脚本内置逻辑）",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=30,
+        help="转换脚本 --fps（默认 30）",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        metavar="N",
+        help="转换脚本 --workers 并行进程数（默认 8）",
+    )
+    parser.add_argument(
+        "--vcodec",
+        type=str,
+        default="libsvtav1",
+        help="转换脚本 --vcodec 视频编码器（默认 libsvtav1）",
+    )
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=30,
+        help="转换脚本 --crf 视频质量（默认 30）",
+    )
     args = parser.parse_args()
     resume_mode = args.resume
     task_from = args.task_from
@@ -676,131 +800,108 @@ if __name__ == "__main__":
     OBS_RCLONE_CONFIG = {
         "郑州": {
             "obs_base_path": 'huawei-cloud:openloong-zhengzhou-apps-private/data-collector-svc/align',
-            "rclone_config": '/root/.config/rclone/rclone_zhengzhou.conf'
+            "rclone_config": '/dreamzero_openloop_pipeline/rclone_zhengzhou.conf'
         },
         "上海": {
             "obs_base_path": 'huawei-cloud:openloong-apps-prod-private/data-collector-svc/align',
-            "rclone_config": '/root/.config/rclone/rclone_shanghai.conf'
+            "rclone_config": '/dreamzero_openloop_pipeline/rclone_shanghai.conf'
         },
     }
 
-    excel_path = "/mnt/fastdisk/convert2lerobotv30/数据转换第三批次20260513测试版本.xlsx"
-    # sheet name 获取 robot_types 和 region
-    # 需要转换的sheet name，和 sheet name下需要转换的机型
-    EXCEL_CONFIG = {
-        "郑州平台": {
-            "robot_types": [
-                "智元G1",
-                "青龙ROS2",
-                "智元A2",
-                "乐聚KUAVO",
-                "傅利叶GR2",
-                "Dwheel",
-            ],
-            "region": "郑州",
-        },
-        "重点研发-上海": {
-            "robot_types": ["智元G1"],
-            "region": "上海",
-        },
-        "模型内部需求-上海": {
-            "robot_types": [    
-                "智元A2",
-                "方舟无限arx-acone",
-                "傅利叶GR2",
-                "智元G1",
-                "星尘智能S1",
-                "UR5e",
-                "天机",
-                "Dwheel",
-                "松灵Aloha",
-                "乐聚KUAVO",
-                "星海图R1",
-                "Franka FR3",
-            ],
-            "region": "上海",
-        },
-    }
+    excel_path = args.excel_path
+    EXCEL_SHEET_NAME = "数据列表"
 
-    local_base_path = '/mnt/fastdisk/align'
-    output_base_path = '/mnt/fastdisk/lerobotv30'
-    output_base_path_map = {}
-    # 根据表格的sheet name新建输出目录
-    for key in EXCEL_CONFIG.keys():
-        path = os.path.join(output_base_path, key)
-        os.makedirs(path, exist_ok=True)
-        output_base_path_map[key] = path
+    align_path = args.align_path
+    lerobot_v30_path = args.lerobot_v30_path
+    os.makedirs(lerobot_v30_path, exist_ok=True)
 
     # 转换脚本路径
-    scripts_base_path = "/mnt/fastdisk/convert2lerobotv30"
+    scripts_base_path = args.scripts_base_path
     # 默认转换脚本，11个机型
     # !!!青龙机型需要根据机器编号来选择转换脚本，当作2个机型!!!
     DEFAULT_CONVERT_SCRIPTS = {
-        "方舟无限arx-acone": scripts_base_path + "/arx_loong_align2lerobotv30.py",
-        "星尘智能S1": scripts_base_path + "/AstribotS1_align2lerobotv30.py",
-        "松灵Aloha": scripts_base_path + "/cobotmagic_align2lerobotv30.py",
-        "UR5e": scripts_base_path + "/DualUR5e_align2lerobotv30.py",
-        "Dwheel": scripts_base_path + "/Dwheel_align2lerobotv30.py",
-        "Franka FR3": scripts_base_path + "/fr3_align2lerobotv30.py",
-        "傅利叶GR2": scripts_base_path + "/GR2_align2lerobotv30.py",
-        "傅利叶GR-2": scripts_base_path + "/GR2_align2lerobotv30.py",
-        "乐聚KUAVO": scripts_base_path + "/lejukuafu_align2lerobotv30.py",
-        "天机": scripts_base_path + "/TIANJI_align2lerobotv30.py",
-        "星海图R1": scripts_base_path + "/xinghaitu_r1_align2lerobotv30.py",
-        "智元A2": scripts_base_path + "/ZhiYuanA2_align2lerobotv30.py",
-        "青龙ROS1": scripts_base_path + "/QinLongROS1_align2lerobotv30.py",
-        "青龙ROS2": scripts_base_path + "/QinLongROS2_align2lerobotv30.py",
+        "方舟无限arx-acone": os.path.join(scripts_base_path, "arx_loong_align2lerobotv30.py"),
+        "星尘智能S1": os.path.join(scripts_base_path, "AstribotS1_align2lerobotv30.py"),
+        "松灵Aloha": os.path.join(scripts_base_path, "cobotmagic_align2lerobotv30.py"),
+        "UR5e": os.path.join(scripts_base_path, "DualUR5e_align2lerobotv30.py"),
+        "Dwheel": os.path.join(scripts_base_path, "Dwheel_align2lerobotv30.py"),
+        "Franka FR3": os.path.join(scripts_base_path, "fr3_align2lerobotv30.py"),
+        "傅利叶GR2": os.path.join(scripts_base_path, "GR2_align2lerobotv30.py"),
+        "傅利叶GR-2": os.path.join(scripts_base_path, "GR2_align2lerobotv30.py"),
+        "乐聚KUAVO": os.path.join(scripts_base_path, "lejukuafu_align2lerobotv30.py"),
+        "天机": os.path.join(scripts_base_path, "TIANJI_align2lerobotv30.py"),
+        "星海图R1": os.path.join(scripts_base_path, "xinghaitu_r1_align2lerobotv30.py"),
+        "智元A2": os.path.join(scripts_base_path, "ZhiYuanA2_align2lerobotv30.py"),
+        "青龙ROS1": os.path.join(scripts_base_path, "QinLongROS1_align2lerobotv30.py"),
+        "青龙ROS2": os.path.join(scripts_base_path, "QinLongROS2_align2lerobotv30.py"),
     }
 
     # 智元G1的转换脚本，2个地区，当作2个机型
     G1_SCRIPTS = {
-        "郑州": scripts_base_path + "/zhengzhou_zhiyuan_G1_align2lerobotv30.py",
-        "上海": scripts_base_path + "/Genie1_align2lerobotv30.py",
+        "郑州": os.path.join(scripts_base_path, "zhengzhou_zhiyuan_G1_align2lerobotv30.py"),
+        "上海": os.path.join(scripts_base_path, "Genie1_align2lerobotv30.py"),
     }
 
-    MAX_COUNT = 2 # 根据taskID 读取桶上数量，只下载 MAX_COUNT 条eposide
-    log_file_path = '/mnt/fastdisk/convert2lerobotv30/convert_all_status.txt'
+    MAX_COUNT = args.max_count
+    log_file_path = args.log_file_path
+    convert_repo_id = args.repo_id
+    convert_fps = args.fps
+    convert_workers = args.workers
+    convert_vcodec = args.vcodec
+    convert_crf = args.crf
 
     def get_convert_script(robot_type, region):
+        """返回转换脚本路径；无对应脚本时返回 None。"""
         if robot_type == "智元G1":
-            return G1_SCRIPTS[region]
-        return DEFAULT_CONVERT_SCRIPTS[robot_type]
+            return G1_SCRIPTS.get(region)
+        return DEFAULT_CONVERT_SCRIPTS.get(robot_type)
 
     try:
-        # 按 EXCEL_CONFIG 中的 sheet 配置读取所有表单，并筛选出待处理任务。
+        # 从单一 sheet「数据列表」读取；地区由「数据来源」列决定，机型由是否有转换脚本决定
+        valid_regions = list(OBS_RCLONE_CONFIG.keys())
+        print("\n" + "=" * 80)
+        print(f"读取 Excel 表单: {EXCEL_SHEET_NAME}")
+        print(f"LeRobot v3.0 输出目录: {lerobot_v30_path}")
+        print(f"支持的数据来源: {valid_regions}")
+        print("=" * 80)
+
+        data = get_data(excel_path, EXCEL_SHEET_NAME)
         all_target_tasks = []
-        for sheet_name, sheet_config in EXCEL_CONFIG.items():
-            robot_types = sheet_config["robot_types"]
-            region = sheet_config["region"]
+        region_task_counts = {region: 0 for region in valid_regions}
+        skipped_region_count = 0
+        skipped_robot_type_count = 0
+
+        for record in data:
+            region = str(record.get("数据来源", "")).strip()
+            if region not in OBS_RCLONE_CONFIG:
+                skipped_region_count += 1
+                continue
+
+            robot_type = record["设备类型"]
+            convert_script = get_convert_script(robot_type, region)
+            if convert_script is None:
+                skipped_robot_type_count += 1
+                continue
+
             obs_config = OBS_RCLONE_CONFIG[region]
-            sheet_output_base_path = output_base_path_map[sheet_name]
-            robot_type_label = "_".join(robot_types)
+            task_record = dict(record)
+            task_record["_sheet_name"] = EXCEL_SHEET_NAME
+            task_record["_region"] = region
+            task_record["_obs_base_path"] = obs_config["obs_base_path"]
+            task_record["_rclone_config"] = obs_config["rclone_config"]
+            task_record["_output_base_path"] = lerobot_v30_path
+            task_record["_convert_script"] = convert_script
+            all_target_tasks.append(task_record)
+            region_task_counts[region] += 1
 
-            print("\n" + "=" * 80)
-            print(f"读取配置表单: {sheet_name}")
-            print(f"  机型: {robot_type_label}")
-            print(f"  region: {region}")
-            print(f"  输出目录: {sheet_output_base_path}")
-            print("=" * 80)
-
-            data = get_data(excel_path, sheet_name)
-            sheet_task_count = 0
-            for record in data:
-                robot_type = record['设备类型']
-                if robot_type not in robot_types: #and record['组帧失败次数'] == 0 and record['平台'] == '郑州'
-                    continue
-
-                task_record = dict(record)
-                task_record["_sheet_name"] = sheet_name
-                task_record["_region"] = region
-                task_record["_obs_base_path"] = obs_config["obs_base_path"]
-                task_record["_rclone_config"] = obs_config["rclone_config"]
-                task_record["_output_base_path"] = sheet_output_base_path
-                task_record["_convert_script"] = get_convert_script(robot_type, region)
-                all_target_tasks.append(task_record)
-                sheet_task_count += 1
-
-            print(f"表单 {sheet_name} 筛选出 {sheet_task_count} 个待处理任务")
+        for region, count in region_task_counts.items():
+            print(f"数据来源 [{region}] 筛选出 {count} 个待处理任务")
+        if skipped_region_count:
+            print(
+                f"跳过 {skipped_region_count} 条：数据来源不在 {valid_regions} 中"
+            )
+        if skipped_robot_type_count:
+            print(f"跳过 {skipped_robot_type_count} 条：设备类型无对应转换脚本")
 
         global_total_tasks = len(all_target_tasks)
         task_to = task_to_arg if task_to_arg is not None else global_total_tasks
@@ -820,7 +921,7 @@ if __name__ == "__main__":
         target_tasks = all_target_tasks[task_from - 1 : task_to]
         batch_total = len(target_tasks)
 
-        print(f"\n全部表单筛选后清单共 {global_total_tasks} 个任务")
+        print(f"\n全部任务筛选后清单共 {global_total_tasks} 个任务")
         print(f"本批处理范围: 第 {task_from} 个 → 第 {task_to} 个（共 {batch_total} 个）")
         print("=" * 80)
         print("提示: 按 Ctrl+C 可以随时终止程序")
@@ -860,6 +961,8 @@ if __name__ == "__main__":
                 processed_text_en=record['处理后文本(英文)'],
                 sheet_name=record['_sheet_name'],
                 robot_type=record['设备类型'],
+                region=record['_region'],
+                convert_script=record['_convert_script'],
             )
         
         # 阶段1: 预下载待处理任务（跳过已完成的，找到前 pipeline_buffer_size 个需要处理的任务并下载）
@@ -892,7 +995,7 @@ if __name__ == "__main__":
             # 需要下载（pending 或 failed）
             success, error_msg = download_task_sync(
                 task_id, task_from + i, global_total_tasks,
-                target_tasks[i]["_obs_base_path"], local_base_path, target_tasks[i]["_rclone_config"], logger, MAX_COUNT
+                target_tasks[i]["_obs_base_path"], align_path, target_tasks[i]["_rclone_config"], logger, MAX_COUNT
             )
             if not success or interrupted:
                 if error_msg:
@@ -900,7 +1003,7 @@ if __name__ == "__main__":
                 if interrupted:
                     break
             else:
-                task_path = Path(local_base_path) / task_id
+                task_path = Path(align_path) / task_id
                 check_and_limit_subfolder_count(task_path, max_count=MAX_COUNT, logger=logger, task_id=task_id)
                 # 下载成功后，重置之前被 skip 的转换和删除状态
                 with logger.lock:
@@ -940,7 +1043,8 @@ if __name__ == "__main__":
             print(f"处理进度: {global_task_num}/{global_total_tasks}（本批第 {i + 1}/{batch_total} 个）")
             print(f"  任务ID: {task_id}")
             print(f"  表单: {record['_sheet_name']}")
-            print(f"  region: {record['_region']}")
+            print(f"  数据来源: {record['_region']}")
+            print(f"  转换脚本: {record['_convert_script']}")
             print(f"  设备类型: {record['设备类型']}")
             print(f"  处理后文本(英文): {processed_text_en}")
             
@@ -963,10 +1067,10 @@ if __name__ == "__main__":
                 print(f"\n[重新下载] 任务 {global_task_num}/{global_total_tasks} (ID: {task_id})")
                 dl_success, dl_error = download_task_sync(
                     task_id, global_task_num, global_total_tasks,
-                    record["_obs_base_path"], local_base_path, record["_rclone_config"], logger, MAX_COUNT
+                    record["_obs_base_path"], align_path, record["_rclone_config"], logger, MAX_COUNT
                 )
                 if dl_success:
-                    task_path_dl = Path(local_base_path) / task_id
+                    task_path_dl = Path(align_path) / task_id
                     check_and_limit_subfolder_count(task_path_dl, max_count=MAX_COUNT, logger=logger, task_id=task_id)
                     # 下载成功后，重置之前被 skip 的转换和删除状态
                     with logger.lock:
@@ -987,7 +1091,7 @@ if __name__ == "__main__":
                 continue
             
             # 下载成功后，检查并限制子文件夹数量
-            task_path = Path(local_base_path) / task_id
+            task_path = Path(align_path) / task_id
             check_success, subfolder_count, action_taken = check_and_limit_subfolder_count(
                 task_path, max_count=MAX_COUNT, logger=logger, task_id=task_id
             )
@@ -1007,7 +1111,7 @@ if __name__ == "__main__":
                         task_number=task_from + next_download_idx,
                         total_tasks=global_total_tasks,
                         obs_base_path=next_record["_obs_base_path"],
-                        local_base_path=local_base_path,
+                        local_base_path=align_path,
                         rclone_config=next_record["_rclone_config"],
                         logger=logger,
                         max_count=MAX_COUNT,
@@ -1027,7 +1131,17 @@ if __name__ == "__main__":
                 try:
                     convert_script = record["_convert_script"]
                     task_output_base_path = record["_output_base_path"]
-                    cmd = f'SVT_LOG=1 python3 {convert_script} --input {local_base_path}/{task_id} --output {task_output_base_path}/{task_id} --task {shlex.quote(processed_text_en)}'
+                    cmd = build_align2lerobot_cmd(
+                        convert_script=convert_script,
+                        input_path=f"{align_path}/{task_id}",
+                        output_path=f"{task_output_base_path}/{task_id}",
+                        task_text=processed_text_en,
+                        repo_id=convert_repo_id,
+                        fps=convert_fps,
+                        workers=convert_workers,
+                        vcodec=convert_vcodec,
+                        crf=convert_crf,
+                    )
                     ret = run_command(cmd, f"[转换] 任务 {global_task_num}/{global_total_tasks}")
                     
                     if ret == 0:
@@ -1058,7 +1172,7 @@ if __name__ == "__main__":
                     print(f"⏭ 任务 {task_id} 已删除，跳过删除步骤")
                 else:
                     try:
-                        cmd = f'rm -rf {local_base_path}/{task_id}'
+                        cmd = f'rm -rf {align_path}/{task_id}'
                         ret = run_command(cmd, f"[清理] 任务 {global_task_num}/{global_total_tasks}")
                         
                         if ret == 0:
@@ -1080,7 +1194,7 @@ if __name__ == "__main__":
             else:
                 # 转换失败，不删除原数据
                 logger.update_delete(task_id, False, "转换未成功，保留原数据")
-                print(f"⚠ 转换失败，保留原数据: {local_base_path}/{task_id}")
+                print(f"⚠ 转换失败，保留原数据: {align_path}/{task_id}")
             
             print(f"\n{'✓' if convert_success else '✗'} 任务 {global_task_num}/{global_total_tasks} {'完成' if convert_success else '失败'}")
         

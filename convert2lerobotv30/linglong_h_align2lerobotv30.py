@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
 """
-星尘智能 Astribot S1 机器人数据转换脚本 - 转换为 LeRobot v3.0 格式
-【no_norm 版本：所有维度保留原始物理量，effector 不做归一化】
+人形机器人 LINGLONG-H (linglong_h) 数据转换脚本 - 转换为 LeRobot v3.0 格式
+【no_norm 版本：保留原始物理量，effector 不做额外归一化】
 
-使用已对齐的 h5 文件 (*_align.h5) 进行转换。
+厂商: 人形机器人（上海）有限公司, model=LINGLONG-H, metadata.ver=2.1.0
+适用于已对齐的 h5 文件。
 
-S1 机器人数据结构 (基于 metadata.json ver=2.1.0):
-    State / Action: 25 维
-        - arm:      14 维 (左臂7 + 右臂7)，单位 rad
-                    [l_shoulder_pitch, l_shoulder_roll, l_shoulder_yaw, l_elbow_pitch,
-                     l_wrist_yaw, l_wrist_pitch, l_wrist_roll,
-                     r_shoulder_pitch, r_shoulder_roll, r_shoulder_yaw, r_elbow_pitch,
-                     r_wrist_yaw, r_wrist_pitch, r_wrist_roll]
-        - effector:  2 维 (left_claw + right_claw)，单位 mm，范围约 [0, 100]
-                     【本脚本保留原始 mm 值，不做归一化】
-        - head:      2 维 (head_pan + head_tilt)，单位 rad
-        - torso:     4 维 (ankle_pitch, knee_pitch, hip_pitch, hip_yaw)，单位 rad
-        - chassis:   3 维 (chassis_x, chassis_y, chassis_yaw)，单位 m / rad
-                     来自 joints/state/chassis/position；h5 无 action/chassis 时 action 复用 state
+数据结构 (基于 metadata.json + 实际 h5 dataset shape):
+    State / Action: 24 维
+        - arm:      14 维 (左臂7 + 右臂7), 单位 rad
+        - effector:  2 维 (left_gripper + right_gripper), 范围约 [0, 1]
+        - head:      2 维 (J_head_yaw, J_head_pitch), 单位 rad
+        - waist:     4 维 (J_waist_pitch/roll/yaw + 第4维), 单位 rad
+        - chassis:   2 维 (J_hip_l_roll, J_hip_l_yaw)
 
-    备注：
-        - h5 中还有 state/robot(N,5,3 与 N,5,4) IMU/力矩数据，
-          它们与 LeRobot 的 1D state vector 不兼容，本脚本默认舍弃。
+    备注:
+        - h5 中 joints/{state,action}/end/{position,orientation} 为 3D 末端位姿，
+          与 LeRobot 1D state vector 不兼容，本脚本默认舍弃。
 
     相机 (默认):
-        - head:       RGB (h5 原 720x1280)，统一 resize 到 480x640
-        - hand_left:  RGB (h5 原 360x640)
-        - hand_right: RGB (h5 原 360x640)
-        H5 中还有 stereo 与 torso 两个相机，默认不导出，可通过 --cameras 指定。
+        - head:       RGB (h5 原 720x960), resize 到 640x480
+        - hand_left:  RGB
+        - hand_right: RGB
 
 Usage:
-    python astribot_s1_align2lerobot_v30_no_norm.py \\
-        --input ./raw_data \\
+    python linglong_h_align2lerobotv30.py \\
+        --input /workspace2/datasets/align/7c4708937bf3442faf409540849d8d0d \\
         --output ./lerobot_dataset \\
-        --task "Pick up the sushi" \\
+        --task "Perform the task" \\
         --fps 30 --workers 4
 """
 
@@ -60,7 +54,6 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-# Video encoding
 try:
     import av
     av.logging.set_level(av.logging.ERROR)
@@ -70,7 +63,6 @@ except ImportError:
     import subprocess
     print("Warning: PyAV not found, falling back to FFmpeg subprocess")
 
-# LeRobot imports
 try:
     from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
     from lerobot.common.datasets.compute_stats import compute_episode_stats
@@ -90,42 +82,35 @@ logger = logging.getLogger(__name__)
 # 配置常量
 # =============================================================================
 
-ASTRIBOT_S1_CONFIG = {
-    "robot_type": "AstribotS1",
-    "arm_dim": 14,        # 左臂7 + 右臂7
-    "effector_dim": 2,    # 左爪 + 右爪
-    "head_dim": 2,        # head_pan + head_tilt
-    "torso_dim": 4,       # ankle_pitch, knee_pitch, hip_pitch, hip_yaw
-    "chassis_dim": 3,     # chassis_x, chassis_y, chassis_yaw
-    # 默认导出 3 个相机；可通过 --cameras 覆盖（h5 中还有 stereo / torso）
+LINGLONG_H_CONFIG = {
+    "robot_type": "linglong_h",
+    "arm_dim": 14,
+    "effector_dim": 2,
+    "head_dim": 2,
+    "waist_dim": 4,
+    "chassis_dim": 2,
     "default_cameras": ["head", "hand_left", "hand_right"],
-    "available_cameras": ["head", "hand_left", "hand_right", "stereo", "torso"],
-    "target_image_size": (640, 480),  # (width, height) - 统一 resize 到宽640高480
+    "available_cameras": ["head", "hand_left", "hand_right"],
+    "target_image_size": (640, 480),
 }
 
-# 关节名顺序须与 load_s1_h5 中 concat 顺序一致
 MOTOR_NAMES = [
-    # arm 14 (来自 metadata: joint_info/state/arm/joint_names)
-    "l_shoulder_pitch", "l_shoulder_roll", "l_shoulder_yaw", "l_elbow_pitch",
-    "l_wrist_yaw", "l_wrist_pitch", "l_wrist_roll",
-    "r_shoulder_pitch", "r_shoulder_roll", "r_shoulder_yaw", "r_elbow_pitch",
-    "r_wrist_yaw", "r_wrist_pitch", "r_wrist_roll",
-    # effector 2
-    "left_claw", "right_claw",
-    # head 2
-    "head_pan", "head_tilt",
-    # torso 4
-    "ankle_pitch", "knee_pitch", "hip_pitch", "hip_yaw",
-    # chassis 3
-    "chassis_x", "chassis_y", "chassis_yaw",
+    "J_arm_l_01", "J_arm_l_02", "J_arm_l_03", "J_arm_l_04",
+    "J_arm_l_05", "J_arm_l_06", "J_arm_l_07",
+    "J_arm_r_01", "J_arm_r_02", "J_arm_r_03", "J_arm_r_04",
+    "J_arm_r_05", "J_arm_r_06", "J_arm_r_07",
+    "left_gripper", "right_gripper",
+    "J_head_yaw", "J_head_pitch",
+    "J_waist_pitch", "J_waist_roll", "J_waist_yaw", "J_waist_joint4",
+    "J_hip_l_roll", "J_hip_l_yaw",
 ]
 
 STATE_DIM = (
-    ASTRIBOT_S1_CONFIG["arm_dim"]
-    + ASTRIBOT_S1_CONFIG["effector_dim"]
-    + ASTRIBOT_S1_CONFIG["head_dim"]
-    + ASTRIBOT_S1_CONFIG["torso_dim"]
-    + ASTRIBOT_S1_CONFIG["chassis_dim"]
+    LINGLONG_H_CONFIG["arm_dim"]
+    + LINGLONG_H_CONFIG["effector_dim"]
+    + LINGLONG_H_CONFIG["head_dim"]
+    + LINGLONG_H_CONFIG["waist_dim"]
+    + LINGLONG_H_CONFIG["chassis_dim"]
 )
 ACTION_DIM = STATE_DIM
 assert len(MOTOR_NAMES) == STATE_DIM, (
@@ -147,34 +132,26 @@ def encode_video_pyav(
     crf: int = 30,
     preset: int = 12,
 ) -> None:
-    """使用 PyAV 编码视频"""
     if len(images) == 0:
         raise ValueError("No images provided for video encoding")
-
     height, width = images[0].shape[:2]
-
     if vcodec in ("libsvtav1", "hevc") and pix_fmt == "yuv444p":
         pix_fmt = "yuv420p"
-
     video_options = {"g": str(g), "crf": str(crf)}
     if vcodec == "libsvtav1":
         video_options["preset"] = str(preset)
-
     video_path.parent.mkdir(parents=True, exist_ok=True)
-
     with av.open(str(video_path), "w") as output:
         stream = output.add_stream(vcodec, fps, options=video_options)
         stream.pix_fmt = pix_fmt
         stream.width = width
         stream.height = height
-
         for img_array in images:
-            if img_array.shape[2] == 4:  # RGBA -> RGB
+            if img_array.shape[2] == 4:
                 img_array = img_array[:, :, :3]
             frame = av.VideoFrame.from_ndarray(img_array, format='rgb24')
             for packet in stream.encode(frame):
                 output.mux(packet)
-
         for packet in stream.encode():
             output.mux(packet)
 
@@ -188,33 +165,23 @@ def encode_video_ffmpeg(
     gop: int = 2,
     crf: int = 30,
 ) -> None:
-    """使用 FFmpeg 子进程编码视频"""
     if len(images) == 0:
         raise ValueError("No images provided")
-
     height, width = images[0].shape[:2]
     video_path.parent.mkdir(parents=True, exist_ok=True)
-
     cmd = [
-        "ffmpeg", "-y",
-        "-loglevel", "error",
-        "-f", "rawvideo",
-        "-pix_fmt", "rgb24",
-        "-s", f"{width}x{height}",
-        "-r", str(fps),
-        "-i", "-",
-        "-an",
-        "-c:v", vcodec,
-        "-pix_fmt", pix_fmt,
-        "-g", str(gop),
-        "-crf", str(crf),
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{width}x{height}", "-r", str(fps),
+        "-i", "-", "-an",
+        "-c:v", vcodec, "-pix_fmt", pix_fmt,
+        "-g", str(gop), "-crf", str(crf),
     ]
     if vcodec == "libsvtav1":
         cmd.extend(["-preset", "8"])
     else:
         cmd.extend(["-preset", "fast"])
     cmd.append(str(video_path))
-
     process = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, bufsize=10**8,
@@ -227,8 +194,7 @@ def encode_video_ffmpeg(
         process.stdin.close()
     except Exception as e:
         process.kill()
-        raise RuntimeError(f"FFmpeg encoding failed: {e}")
-
+        raise RuntimeError(f"FFmpeg encoding failed: {e}") from e
     process.wait()
     if process.returncode != 0:
         stderr = process.stderr.read().decode() if process.stderr else ""
@@ -237,7 +203,6 @@ def encode_video_ffmpeg(
 
 def encode_video(images: List[np.ndarray], video_path: Path, fps: int,
                  vcodec: str = "libsvtav1", crf: int = 30) -> None:
-    """使用最佳可用方法编码视频"""
     if USE_PYAV:
         encode_video_pyav(images, video_path, fps, vcodec=vcodec, crf=crf)
     else:
@@ -245,17 +210,16 @@ def encode_video(images: List[np.ndarray], video_path: Path, fps: int,
 
 
 # =============================================================================
-# 数据读取工具
+# 数据读取
 # =============================================================================
 
 def _read_position(f: h5py.File, group: str, expect_dim: int, num_frames: int) -> np.ndarray:
-    """读取关节 position；若 group 不存在则用零填充并 warn"""
     key = f"{group}/position"
     if key in f:
         arr = f[key][:]
         if arr.ndim != 2 or arr.shape[1] != expect_dim:
             logger.warning(
-                f"{key} shape={arr.shape} 与期望 (N, {expect_dim}) 不一致，将尝试截断/补零"
+                f"{key} shape={arr.shape} 与期望 (N, {expect_dim}) 不一致，截断/补零"
             )
             arr = arr.reshape(arr.shape[0], -1)
             if arr.shape[1] > expect_dim:
@@ -268,29 +232,26 @@ def _read_position(f: h5py.File, group: str, expect_dim: int, num_frames: int) -
     return np.zeros((num_frames, expect_dim), dtype=np.float32)
 
 
-def load_astribot_s1_h5(h5_path: Path, cameras: List[str]) -> Dict[str, Any]:
-    """
-    从 Astribot S1 H5 文件加载数据
+def _concat_joint_vector(
+    arm: np.ndarray,
+    effector: np.ndarray,
+    head: np.ndarray,
+    waist: np.ndarray,
+    chassis: np.ndarray,
+) -> np.ndarray:
+    return np.concatenate([arm, effector, head, waist, chassis], axis=1).astype(np.float32)
 
-    Returns:
-        {
-            'frames': int,
-            'state':  np.ndarray (N, 25),
-            'action': np.ndarray (N, 25),
-            'images': {camera_id: List[np.ndarray]},
-            'image_shapes': {camera_id: (H, W, C)},
-            'task': str,
-        }
-    """
+
+def load_linglong_h_h5(h5_path: Path, cameras: List[str]) -> Dict[str, Any]:
+    """从 LINGLONG-H H5 文件加载数据。"""
     data: Dict[str, Any] = {}
+    cfg = LINGLONG_H_CONFIG
 
     with h5py.File(h5_path, 'r') as f:
-        # metadata（S1 的 metadata 中不一定有 task_name，主要靠 --task 传入）
         task_name = "manipulation_task"
         if 'metadata.json' in f:
             try:
                 metadata = json.loads(f['metadata.json'][()])
-                # 兼容旧字段（如有）
                 task_name = (
                     metadata.get('task_name')
                     or metadata.get('task')
@@ -300,42 +261,41 @@ def load_astribot_s1_h5(h5_path: Path, cameras: List[str]) -> Dict[str, Any]:
                 logger.warning(f"读取 metadata.json 失败: {e}")
         data['task'] = task_name
 
-        # 帧数（按 timestamp 长度）
-        timestamps = f['timestamp'][:]
-        num_frames = len(timestamps)
+        num_frames = len(f['timestamp'][:])
         data['frames'] = num_frames
 
-        # ===== State / Action =====
-        s_arm      = _read_position(f, 'joints/state/arm',      ASTRIBOT_S1_CONFIG['arm_dim'],      num_frames)
-        s_effector = _read_position(f, 'joints/state/effector', ASTRIBOT_S1_CONFIG['effector_dim'], num_frames)
-        s_effector = np.clip(s_effector, 0.0, 100.0)
-        s_head     = _read_position(f, 'joints/state/head',     ASTRIBOT_S1_CONFIG['head_dim'],     num_frames)
-        s_torso    = _read_position(f, 'joints/state/torso',    ASTRIBOT_S1_CONFIG['torso_dim'],    num_frames)
-        s_chassis  = _read_position(f, 'joints/state/chassis',  ASTRIBOT_S1_CONFIG['chassis_dim'],  num_frames)
-        data['state'] = np.concatenate(
-            [s_arm, s_effector, s_head, s_torso, s_chassis], axis=1
-        ).astype(np.float32)
+        s_arm = _read_position(f, 'joints/state/arm', cfg['arm_dim'], num_frames)
+        s_effector = np.clip(
+            _read_position(f, 'joints/state/effector', cfg['effector_dim'], num_frames),
+            0.0, 1.0,
+        )
+        s_head = _read_position(f, 'joints/state/head', cfg['head_dim'], num_frames)
+        s_waist = _read_position(f, 'joints/state/waist', cfg['waist_dim'], num_frames)
+        s_chassis = _read_position(f, 'joints/state/chassis', cfg['chassis_dim'], num_frames)
+        data['state'] = _concat_joint_vector(
+            s_arm, s_effector, s_head, s_waist, s_chassis
+        )
 
-        a_arm      = _read_position(f, 'joints/action/arm',      ASTRIBOT_S1_CONFIG['arm_dim'],      num_frames)
-        a_effector = _read_position(f, 'joints/action/effector', ASTRIBOT_S1_CONFIG['effector_dim'], num_frames)
-        a_effector = np.clip(a_effector, 0.0, 100.0)
-        a_head     = _read_position(f, 'joints/action/head',     ASTRIBOT_S1_CONFIG['head_dim'],     num_frames)
-        a_torso    = _read_position(f, 'joints/action/torso',    ASTRIBOT_S1_CONFIG['torso_dim'],    num_frames)
+        a_arm = _read_position(f, 'joints/action/arm', cfg['arm_dim'], num_frames)
+        a_effector = np.clip(
+            _read_position(f, 'joints/action/effector', cfg['effector_dim'], num_frames),
+            0.0, 1.0,
+        )
+        a_head = _read_position(f, 'joints/action/head', cfg['head_dim'], num_frames)
+        a_waist = _read_position(f, 'joints/action/waist', cfg['waist_dim'], num_frames)
         if 'joints/action/chassis/position' in f:
             a_chassis = _read_position(
-                f, 'joints/action/chassis', ASTRIBOT_S1_CONFIG['chassis_dim'], num_frames
+                f, 'joints/action/chassis', cfg['chassis_dim'], num_frames
             )
         else:
-            # S1 align h5 通常只有 state/chassis，无 action/chassis；与 MODALITY 对齐时复用 state
             a_chassis = s_chassis.copy()
-        data['action'] = np.concatenate(
-            [a_arm, a_effector, a_head, a_torso, a_chassis], axis=1
-        ).astype(np.float32)
+        data['action'] = _concat_joint_vector(
+            a_arm, a_effector, a_head, a_waist, a_chassis
+        )
 
-        # ===== 相机图像 =====
         images: Dict[str, List[np.ndarray]] = {}
         image_shapes: Dict[str, tuple] = {}
-        target_width, target_height = ASTRIBOT_S1_CONFIG["target_image_size"]
+        target_width, target_height = cfg["target_image_size"]
 
         for cam_id in cameras:
             cam_key = f'cameras/{cam_id}/color/data'
@@ -344,8 +304,7 @@ def load_astribot_s1_h5(h5_path: Path, cameras: List[str]) -> Dict[str, Any]:
                 continue
 
             img_list: List[np.ndarray] = []
-            img_bytes_array = f[cam_key][:]
-            for img_bytes in img_bytes_array:
+            for img_bytes in f[cam_key][:]:
                 try:
                     np_arr = np.frombuffer(img_bytes, np.uint8)
                     img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -363,10 +322,9 @@ def load_astribot_s1_h5(h5_path: Path, cameras: List[str]) -> Dict[str, Any]:
                     logger.warning(f"Decode image failed ({cam_id}): {e}")
 
             if img_list:
-                # 帧数对齐校验：以 timestamp 数为准；多/少时截断或末帧重复
                 if len(img_list) > num_frames:
                     img_list = img_list[:num_frames]
-                elif len(img_list) < num_frames and len(img_list) > 0:
+                elif len(img_list) < num_frames:
                     img_list += [img_list[-1]] * (num_frames - len(img_list))
                 images[cam_id] = img_list
 
@@ -390,7 +348,6 @@ def convert_episode(
     crf: int = 30,
     task_override: str = None,
 ) -> dict:
-    """将单个 episode 数据转换为 LeRobot 数据集格式"""
     result = {
         'episode_index': episode_index,
         'success': False,
@@ -403,7 +360,6 @@ def convert_episode(
         num_frames = episode_data['frames']
         task = task_override if task_override else episode_data.get('task', 'manipulation_task')
 
-        # 定义 features
         features = {
             "observation.state": {
                 "dtype": "float32",
@@ -419,7 +375,6 @@ def convert_episode(
             },
         }
 
-        # 图像 features
         for cam_id, shape in episode_data['image_shapes'].items():
             h, w, c = shape
             features[f"observation.images.{cam_id}"] = {
@@ -438,23 +393,18 @@ def convert_episode(
                 },
             }
 
-        # 临时目录用于视频编码
         temp_base_dir = Path(tempfile.mkdtemp())
         video_paths: Dict[str, Path] = {}
 
-        # 编码视频
         for cam_id, img_list in episode_data['images'].items():
             if img_list:
                 temp_video_dir = Path(tempfile.mkdtemp(dir=temp_base_dir))
                 video_path = temp_video_dir / f"{cam_id}.mp4"
                 encode_video(img_list, video_path, fps, vcodec=vcodec, crf=crf)
                 video_paths[cam_id] = video_path
-                logger.debug(f"Encoded {len(img_list)} frames for camera {cam_id}")
 
-        # 释放图像内存
         del episode_data['images']
 
-        # 创建数据集
         episode_dir = output_dir / f"episode_{episode_index:04d}"
         if episode_dir.exists():
             shutil.rmtree(episode_dir)
@@ -462,14 +412,13 @@ def convert_episode(
         dataset = LeRobotDataset.create(
             repo_id=f"{repo_id}/episode_{episode_index:04d}",
             root=episode_dir,
-            robot_type=ASTRIBOT_S1_CONFIG["robot_type"],
+            robot_type=LINGLONG_H_CONFIG["robot_type"],
             fps=fps,
             features=features,
             use_videos=True,
             image_writer_threads=0,
         )
 
-        # 添加帧
         logger.info(f"Adding {num_frames} frames...")
         for i in range(num_frames):
             frame_dict = {
@@ -477,13 +426,11 @@ def convert_episode(
                 "action": episode_data['action'][i],
                 "task": task,
             }
-            # 占位符图像（真实图像通过 _save_episode_video 写入）
             for cam_id, shape in episode_data['image_shapes'].items():
                 h, w, c = shape
                 frame_dict[f"observation.images.{cam_id}"] = np.zeros((h, w, c), dtype=np.uint8)
             dataset.add_frame(frame_dict)
 
-        # 保存 episode
         dataset._wait_image_writer()
 
         episode_buffer = dataset.episode_buffer
@@ -499,7 +446,6 @@ def convert_episode(
             dataset.meta.get_task_index(t) for t in tasks_list
         ])
 
-        # Stack features
         for key, ft in dataset.features.items():
             if key in ["index", "episode_index", "task_index"]:
                 continue
@@ -508,7 +454,6 @@ def convert_episode(
             if key in episode_buffer:
                 episode_buffer[key] = np.stack(episode_buffer[key])
 
-        # 计算统计量
         non_video_features = {
             k: v for k, v in dataset.features.items()
             if v["dtype"] not in ["image", "video"]
@@ -519,7 +464,6 @@ def convert_episode(
         }
         ep_stats = compute_episode_stats(non_video_buffer, non_video_features)
 
-        # 保存视频
         episode_metadata: Dict[str, Any] = {}
         for cam_id, temp_video_path in video_paths.items():
             video_key = f"observation.images.{cam_id}"
@@ -530,19 +474,15 @@ def convert_episode(
             )
             episode_metadata.update(video_metadata)
 
-        # 移除视频 keys
         for video_key in list(episode_buffer.keys()):
             if video_key in dataset.meta.video_keys:
                 del episode_buffer[video_key]
 
-        # 保存数据
         ep_data_metadata = dataset._save_episode_data(episode_buffer)
         episode_metadata.update(ep_data_metadata)
 
-        # 保存元数据
         dataset.meta.save_episode(0, episode_length, episode_tasks, ep_stats, episode_metadata)
 
-        # 更新视频信息
         for video_key in dataset.meta.video_keys:
             dataset.meta.update_video_info(video_key)
 
@@ -563,10 +503,9 @@ def convert_episode(
 
 
 def convert_episode_wrapper(args: tuple) -> dict:
-    """进程池包装器"""
     h5_path, output_dir, repo_id, episode_index, fps, vcodec, crf, task_override, cameras = args
     try:
-        episode_data = load_astribot_s1_h5(h5_path, cameras=cameras)
+        episode_data = load_linglong_h_h5(h5_path, cameras=cameras)
         return convert_episode(
             episode_data=episode_data,
             output_dir=output_dir,
@@ -587,19 +526,13 @@ def convert_episode_wrapper(args: tuple) -> dict:
         }
 
 
-# =============================================================================
-# 主入口
-# =============================================================================
-
 def find_episodes(data_dir: Path) -> List[Path]:
-    """查找所有可转换的 episode H5 文件"""
     if data_dir.is_file() and data_dir.suffix == ".h5":
         return [data_dir]
 
     episodes: List[Path] = []
     seen = set()
 
-    # 子目录中的 h5（每个子目录取第一个 .h5）
     for subdir in sorted(data_dir.iterdir()):
         if subdir.is_dir():
             h5_files = sorted(subdir.glob("*.h5"))
@@ -607,7 +540,6 @@ def find_episodes(data_dir: Path) -> List[Path]:
                 episodes.append(h5_files[0])
                 seen.add(h5_files[0])
 
-    # 直接在目录下的 .h5
     for h5_file in sorted(data_dir.glob("*.h5")):
         if h5_file not in seen:
             episodes.append(h5_file)
@@ -617,9 +549,8 @@ def find_episodes(data_dir: Path) -> List[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="星尘智能 Astribot S1 机器人数据转换为 LeRobot v3.0 格式"
+        description="LINGLONG-H (linglong_h) 机器人数据转换为 LeRobot v3.0 格式"
     )
-
     parser.add_argument("--input", type=Path, required=True,
                         help="数据目录或单个 H5 文件")
     parser.add_argument("--output", type=Path, required=True,
@@ -627,7 +558,7 @@ def main():
     parser.add_argument("--repo_id", type=str, default=None,
                         help="HuggingFace 仓库 ID（默认使用输出目录名）")
     parser.add_argument("--task", type=str, nargs='+', default=["manipulation_task"],
-                        help="任务描述（默认: manipulation_task；多个词会拼接）")
+                        help="任务描述（多个词会自动拼接）")
     parser.add_argument("--fps", type=int, default=30,
                         help="数据集帧率 (默认: 30)")
     parser.add_argument("--workers", type=int, default=8,
@@ -638,10 +569,10 @@ def main():
                         help="视频质量 CRF (默认: 30)")
     parser.add_argument(
         "--cameras", type=str, nargs='+',
-        default=ASTRIBOT_S1_CONFIG["default_cameras"],
+        default=LINGLONG_H_CONFIG["default_cameras"],
         help=(
             "要导出的相机列表，默认: head hand_left hand_right。"
-            f"可选: {' '.join(ASTRIBOT_S1_CONFIG['available_cameras'])}"
+            f"可选: {' '.join(LINGLONG_H_CONFIG['available_cameras'])}"
         ),
     )
 
@@ -653,13 +584,14 @@ def main():
     if args.repo_id is None:
         args.repo_id = args.output.name
 
-    # 校验相机
-    invalid = [c for c in args.cameras if c not in ASTRIBOT_S1_CONFIG["available_cameras"]]
+    invalid = [c for c in args.cameras if c not in LINGLONG_H_CONFIG["available_cameras"]]
     if invalid:
-        print(f"Error: 不支持的相机: {invalid}，可选: {ASTRIBOT_S1_CONFIG['available_cameras']}")
+        print(
+            f"Error: 不支持的相机: {invalid}，"
+            f"可选: {LINGLONG_H_CONFIG['available_cameras']}"
+        )
         sys.exit(1)
 
-    # 查找 episodes
     episodes = find_episodes(args.input)
     if not episodes:
         print(f"No .h5 files found in {args.input}")
@@ -669,20 +601,21 @@ def main():
     for path in episodes:
         print(f"  - {path.name}")
 
-    print(f"\nRobot: {ASTRIBOT_S1_CONFIG['robot_type']}")
-    print(f"State/Action dim: {STATE_DIM} (arm14 + effector2 + head2 + torso4 + chassis3)")
+    print(f"\nRobot: {LINGLONG_H_CONFIG['robot_type']}")
+    print(
+        f"State/Action dim: {STATE_DIM} "
+        f"(arm14 + effector2 + head2 + waist4 + chassis2)"
+    )
     print(f"Cameras: {args.cameras}")
     print(f"Workers: {args.workers}, PyAV: {USE_PYAV}")
     print(f"Task: {args.task}")
 
-    # 输出目录
     output_root = args.output
     if output_root.exists():
         shutil.rmtree(output_root)
     separate_dir = output_root.parent / f"{output_root.name}_separate_episodes"
     separate_dir.mkdir(parents=True, exist_ok=True)
 
-    # 构建任务列表
     tasks = []
     for i, path in enumerate(episodes):
         tasks.append((
@@ -690,7 +623,6 @@ def main():
             args.fps, args.vcodec, args.crf, args.task, args.cameras,
         ))
 
-    # 并行处理
     success_datasets: List[Path] = []
     failed_episodes: List[str] = []
 
@@ -709,7 +641,6 @@ def main():
                 pbar.update(1)
     elapsed = time.time() - start_time
 
-    # 总结
     print(f"\n{'=' * 70}")
     print(f"Conversion completed in {elapsed:.1f}s")
     print(f"Success: {len(success_datasets)} / {len(episodes)}")
@@ -725,7 +656,6 @@ def main():
         print("No valid datasets. Exiting.")
         sys.exit(1)
 
-    # 合并数据集
     try:
         from lerobot.common.datasets.dataset_tools import merge_datasets
     except ImportError:
@@ -751,7 +681,7 @@ def main():
             output_dir=output_root,
             output_repo_id=args.repo_id,
         )
-        print(f"\nMerge Complete!")
+        print("\nMerge Complete!")
         print(f"Output: {output_root}")
         print(f"Total Episodes: {merged.meta.total_episodes}")
         print(f"Total Frames: {merged.meta.total_frames}")
