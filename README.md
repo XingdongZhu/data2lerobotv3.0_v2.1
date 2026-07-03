@@ -25,7 +25,7 @@ python convert_all.py --resume
 python convert_all.py -r --task-from 10 --task-to 60
 ```
 
-**详细文档：** [convert2lerobotv30/README_convert_all.md](convert2lerobotv30/README_convert_all.md)
+**详细文档：** [convert2lerobotv30/README.md](convert2lerobotv30/README.md)
 
 ---
 

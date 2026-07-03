@@ -640,7 +640,7 @@ MIT License
 
 ## 相关文档
 
-- [convert_all.py README](../convert2lerobotv30/README_convert_all.md) - v3.0 数据转换工具
+- [convert2lerobotv30 README](../convert2lerobotv30/README.md) - v3.0 数据转换工具
 - [analyze_lerobot_data.py README](../convert2lerobotv30/README_analyze_lerobot_data.md) - 数据分析工具
 - [LeRobot GitHub](https://github.com/huggingface/lerobot)
 - [LeRobot 文档](https://github.com/huggingface/lerobot/tree/main/lerobot)
