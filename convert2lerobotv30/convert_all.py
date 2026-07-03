@@ -737,20 +737,20 @@ if __name__ == "__main__":
     # !!!青龙机型需要根据机器编号来选择转换脚本，当作2个机型!!!
     DEFAULT_CONVERT_SCRIPTS = {
         "方舟无限arx-acone": scripts_base_path + "/arx_loong_align2lerobotv30.py",
-        "星尘智能S1": scripts_base_path + "/AstribotS1_align2lerobotv30.py",
-        "松灵Aloha": scripts_base_path + "/cobotmagic_align2lerobotv30.py",
-        "UR5e": scripts_base_path + "/DualUR5e_align2lerobotv30.py",
+        "星尘智能S1": scripts_base_path + "/astribot_s1_align2lerobot_v30_no_norm.py",
+        "松灵Aloha": scripts_base_path + "/aloha_align2lerobot_v30_no_norm.py",
+        "UR5e": scripts_base_path + "/ur5e_align2lerobot_v30_no_norm.py",
         "Dwheel": scripts_base_path + "/Dwheel_align2lerobotv30.py",
         "Franka FR3": scripts_base_path + "/fr3_align2lerobotv30.py",
-        "傅利叶GR2": scripts_base_path + "/GR2_align2lerobotv30.py",
-        "傅利叶GR-2": scripts_base_path + "/GR2_align2lerobotv30.py",
-        "乐聚KUAVO": scripts_base_path + "/lejukuafu_align2lerobotv30.py",
+        "傅利叶GR2": scripts_base_path + "/gr2_align2lerobot_v30_no_norm.py",
+        "傅利叶GR-2": scripts_base_path + "/gr2_align2lerobot_v30_no_norm.py",
+        "乐聚KUAVO": scripts_base_path + "/leju_align2lerobot_v30_no_norm.py",
         "天机": scripts_base_path + "/TIANJI_align2lerobotv30.py",
-        "星海图R1": scripts_base_path + "/xinghaitu_r1_align2lerobotv30.py",
+        "星海图R1": scripts_base_path + "/R1_align2lerobot_v30_no_norm.py",
         "智元A2": scripts_base_path + "/ZhiYuanA2_align2lerobotv30.py",
-        "青龙ROS1": scripts_base_path + "/QinLongROS1_align2lerobotv30.py",
-        "青龙ROS2": scripts_base_path + "/QinLongROS2_align2lerobotv30.py",
-        "灵龙-h": scripts_base_path + "linglong_h_align2lerobotv30.py",
+        "青龙ROS1": scripts_base_path + "/qinglongros1_align2lerobot_v30_no_norm.py",
+        "青龙ROS2": scripts_base_path + "/qinglongros2_align2lerobot_v30_no_norm.py",
+        "灵龙-h": scripts_base_path + "/linglong_h_align2lerobotv30.py",
     }
 
     # 智元G1的转换脚本，2个地区，当作2个机型

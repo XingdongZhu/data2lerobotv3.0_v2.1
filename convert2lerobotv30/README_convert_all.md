@@ -190,18 +190,19 @@ pipeline_buffer_size = 3  # 预下载缓冲任务数
 | 设备名称（Excel） | 转换脚本 |
 |-------------------|----------|
 | 方舟无限arx-acone | `arx_loong_align2lerobotv30.py` |
-| 星尘智能S1 | `AstribotS1_align2lerobotv30.py` |
-| 松灵Aloha | `cobotmagic_align2lerobotv30.py` |
-| UR5e | `DualUR5e_align2lerobotv30.py` |
+| 星尘智能S1 | `astribot_s1_align2lerobot_v30_no_norm.py` |
+| 松灵Aloha | `aloha_align2lerobot_v30_no_norm.py` |
+| UR5e | `ur5e_align2lerobot_v30_no_norm.py` |
 | Dwheel | `Dwheel_align2lerobotv30.py` |
 | Franka FR3 | `fr3_align2lerobotv30.py` |
-| 傅利叶GR2 | `GR2_align2lerobotv30.py` |
-| 乐聚KUAVO | `lejukuafu_align2lerobotv30.py` |
+| 傅利叶GR2 | `gr2_align2lerobot_v30_no_norm.py` |
+| 乐聚KUAVO | `leju_align2lerobot_v30_no_norm.py` |
 | 天机 | `TIANJI_align2lerobotv30.py` |
-| 星海图R1 | `xinghaitu_r1_align2lerobotv30.py` |
+| 星海图R1 | `R1_align2lerobot_v30_no_norm.py` |
 | 智元A2 | `ZhiYuanA2_align2lerobotv30.py` |
-| 青龙ROS1 | `QinLongROS1_align2lerobotv30.py` |
-| 青龙ROS2 | `QinLongROS2_align2lerobotv30.py` |
+| 青龙ROS1 | `qinglongros1_align2lerobot_v30_no_norm.py` |
+| 青龙ROS2 | `qinglongros1_align2lerobot_v30_no_norm.py` |
+| 灵龙H | `linglong_h_align2lerobotv30.py` |
 
 ### 智元 G1 按 region 选脚本 `G1_SCRIPTS`
 
